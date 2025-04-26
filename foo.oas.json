@@ -1,0 +1,19 @@
+{
+  "openapi": "3.1",
+  "info": {
+    "title": "Foo"
+  },
+  "paths": {
+    "/pets/{id}": {
+      "description": "A given pet",
+      "get": {
+        "operation_id": "get_pet"
+      }
+    }
+  },
+  "servers": [
+    {
+      "url": "http://foo.bar/baz"
+    }
+  ]
+}
