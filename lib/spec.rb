@@ -8,10 +8,11 @@ end
 
 module SpecRefinements
   class FieldDesc
-    attr_reader :name, :type, :required, :default
+    attr_reader :name, :type, :required, :default, :property
 
-    def initialize(name, type, required, default: nil, array: false, map: false)
+    def initialize(name, type, required, property, default: nil, array: false, map: false)
       @name = name
+      @property = pname(property || name)
       @type = type
       @required = required
       @default = default
@@ -24,11 +25,11 @@ module SpecRefinements
   end
 
   class ObjectDesc
-    attr_reader :name, :type, :required, :property_name
+    attr_reader :name, :type, :required, :property
 
     def initialize(name, type, required, array: false, map: false)
       @name = name
-      @property_name = pname(name)
+      @property = pname(name)
       @type = type
       @required = required
       @array = array
@@ -42,7 +43,7 @@ module SpecRefinements
   module BaseObject
     def initialize(**named_args, &block)
       named_args.entries.each do |property, value|
-        send property, value
+        send property, value unless value.nil?
       end
       instance_eval(&block) if block
     end
@@ -53,7 +54,7 @@ module SpecRefinements
         fields = self.class.class_variable_get :@@fields
         fields.each do |field|
           value = instance_variable_get iname(field.name)
-          spec[field.name] = value unless value.nil?
+          spec[field.property] = value unless value.nil?
         end
       end
       if self.class.class_variable_defined? :@@objects
@@ -69,7 +70,7 @@ module SpecRefinements
                   else
                     v.to_spec
                   end
-          spec[object.property_name] = value
+          spec[object.property] = value
         end
       end
       spec
@@ -84,19 +85,25 @@ module SpecRefinements
         const.include BaseObject if const.instance_of? Class
       end
       module_eval do
-        def self.spec(&block)
-          @root.new(&block)
+        def self.spec(content = nil, &block)
+          if content
+            spec = @root.new
+            spec.instance_eval content
+            spec
+          else
+            @root.new(&block)
+          end
         end
       end
     end
   end
 
   refine Class do
-    def field(name, type, required: nil)
+    def field(name, type = String, required: nil, property: nil)
       name, q = name.match(/^([^?]+)(\?)?$/).captures
       required = required.nil? ? !q : required
       fields = class_variable_defined?(:@@fields) ? class_variable_get(:@@fields) : class_variable_set(:@@fields, [])
-      fields << FieldDesc.new(name, type, required)
+      fields << FieldDesc.new(name, type, required, property)
       define_method(name) do |value = nil|
         if value.nil?
           instance_variable_get iname(name)
@@ -154,16 +161,19 @@ module SpecRefinements
             end
           end
         when Array
-          add_name, type = type
-          objects << ObjectDesc.new(name, type, false, array: true)
-          define_method(name) do
-            instance_variable_get iname(name)
-          end
-          define_method(add_name) do |**named_args, &block|
-            list = instance_variable_get iname(name)
-            list ||= instance_variable_set iname(name), []
-            value = type.new(**named_args, &block)
-            list << value
+          add_items = type.first
+          types = add_items.values
+          objects << ObjectDesc.new(name, types, false, array: true)
+          add_items.each_pair do |add_name, type|
+            define_method(name) do
+              instance_variable_get iname(name)
+            end
+            define_method(add_name) do |**named_args, &block|
+              list = instance_variable_get iname(name)
+              list ||= instance_variable_set iname(name), []
+              value = type.new(**named_args, &block)
+              list << value
+            end
           end
         else
           objects << ObjectDesc.new(name, type, false)
@@ -211,6 +221,16 @@ module SpecRefinements
       end
     end
 
+    def field_shortcuts(**named_args)
+      named_args.each_pair do |target, shortcuts|
+        shortcuts.each_pair do |shortcut, value|
+          define_method(shortcut) do
+            send target, value
+          end
+        end
+      end
+    end
+
     def before_field(target, &hook)
       orginal_method = instance_method(target)
       define_method(target) do |value = nil|
@@ -231,6 +251,15 @@ module SpecRefinements
         else
           hook.call(named_args, *args)
           orginal_method.bind(self).call(**named_args, &block)
+        end
+      end
+    end
+
+    def argument_names(target, *names)
+      before_object(target) do |named_args, *args|
+        args.each_with_index do |value, index|
+          name = names[index]
+          named_args[name] = value if !name.nil? && named_args[:name].nil?
         end
       end
     end

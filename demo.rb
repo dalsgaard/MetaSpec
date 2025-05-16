@@ -1,18 +1,9 @@
 require 'json'
 require_relative 'lib/oas'
 
-spec = OAS.spec do
-  openapi '3.1'
-
-  info title: 'Foo'
-
-  server url: 'http://foo.bar/baz'
-
-  path '/pets/{id}', description: 'A given pet' do
-    get operation_id: :get_pet do
-      request_body schema: :Pet
-    end
-  end
+Dir.glob(ARGV[0]).each do |input|
+  output = input.sub(/\.rb$/, '.json')
+  content = File.read(input)
+  spec = OAS.spec content
+  File.write(output, JSON.pretty_generate(spec.to_spec))
 end
-
-File.write('foo.oas.json', JSON.pretty_generate(spec.to_spec))
