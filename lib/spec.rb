@@ -99,16 +99,27 @@ module SpecRefinements
   end
 
   refine Class do
-    def field(name, type = String, required: nil, property: nil)
+    def field(name, type = String, required: nil, property: nil, array: false)
       name, q = name.match(/^([^?]+)(\?)?$/).captures
       required = required.nil? ? !q : required
       fields = class_variable_defined?(:@@fields) ? class_variable_get(:@@fields) : class_variable_set(:@@fields, [])
-      fields << FieldDesc.new(name, type, required, property)
-      define_method(name) do |value = nil|
-        if value.nil?
-          instance_variable_get iname(name)
-        else
-          instance_variable_set iname(name), value
+      fields << FieldDesc.new(name, type, required, property, array: array)
+      if array
+        define_method(name) do |*args|
+          arr = instance_variable_get iname(name)
+          if args.empty?
+            arr
+          else
+            instance_variable_set iname(name), arr.nil? ? args : arr + args
+          end
+        end
+      else
+        define_method(name) do |value = nil|
+          if value.nil?
+            instance_variable_get iname(name)
+          else
+            instance_variable_set iname(name), value
+          end
         end
       end
     end
@@ -121,7 +132,11 @@ module SpecRefinements
           field(name, String)
         end
         named_args.each_pair do |name, type|
-          field(name, type)
+          if type.is_a? Array
+            field(name, type.first, array: true)
+          else
+            field(name, type)
+          end
         end
       end
     end
@@ -136,28 +151,35 @@ module SpecRefinements
       named_args.each_pair do |name, type|
         case type
         when Hash
-          add_name, type = type.entries.first
-          objects << ObjectDesc.new(name, type, false, map: true)
-          if add_name == name
-            define_method(add_name) do |key = nil, **named_args, &block|
-              map = instance_variable_get iname(name)
-              if key.nil?
-                map
-              else
-                map ||= instance_variable_set iname(name), {}
-                value = type.new(**named_args, &block)
-                map[key] = value
+          types = type.values
+          objects << ObjectDesc.new(name, types, false, map: true)
+          type.each_pair do |add_name, type|
+            if add_name == name
+              define_method(add_name) do |key = nil, **named_args, &block|
+                map = instance_variable_get iname(name)
+                if key.nil?
+                  map
+                else
+                  map ||= instance_variable_set iname(name), {}
+                  value = type.new(**named_args, &block)
+                  map[key] = value
+                end
               end
-            end
-          else
-            define_method(name) do
-              instance_variable_get iname(name)
-            end
-            define_method(add_name) do |key, **named_args, &block|
-              map = instance_variable_get iname(name)
-              map ||= instance_variable_set iname(name), {}
-              value = type.new(**named_args, &block)
-              map[key] = value
+            else
+              define_method(name) do
+                instance_variable_get iname(name)
+              end
+              define_method(add_name) do |key = nil, **named_args, &block|
+                map = instance_variable_get iname(name)
+                if named_args.empty? && block.nil?
+                  key.nil? ? map : map[key]
+                else
+                  map ||= instance_variable_set iname(name), {}
+                  value = type.new(**named_args, &block)
+                  map[key] = value
+                  value
+                end
+              end
             end
           end
         when Array
@@ -214,8 +236,8 @@ module SpecRefinements
     def object_shortcuts(**named_args)
       named_args.each_pair do |target, shortcuts|
         shortcuts.each_pair do |shortcut, values|
-          define_method(shortcut) do |**named_args, &block|
-            send target, **values.merge(named_args), &block
+          define_method(shortcut) do |*args, **named_args, &block|
+            send target, *args, **values.merge(named_args), &block
           end
         end
       end
@@ -237,7 +259,7 @@ module SpecRefinements
         if value.nil?
           orginal.bind(self).call
         else
-          new_value = hook.call value
+          new_value = instance_exec(value, &hook)
           orginal_method.bind(self).call new_value
         end
       end
@@ -249,17 +271,45 @@ module SpecRefinements
         if block.nil? && named_args.empty? && args.empty?
           orginal.bind(self).call
         else
-          hook.call(named_args, *args)
-          orginal_method.bind(self).call(**named_args, &block)
+          new_args, new_named_args = instance_exec(*args, **named_args, &hook)
+          orginal_method.bind(self).call(*new_args, **new_named_args, &block)
         end
       end
     end
 
-    def argument_names(target, *names)
-      before_object(target) do |named_args, *args|
-        args.each_with_index do |value, index|
-          name = names[index]
-          named_args[name] = value if !name.nil? && named_args[:name].nil?
+    def before_map(target, &hook)
+      orginal_method = instance_method(target)
+      define_method(target) do |key = nil, *args, **named_args, &block|
+        if block.nil? && named_args.empty? && args.empty? && key.nil?
+          orginal_method.bind(self).call
+        else
+          new_key, new_args, new_named_args = instance_exec(key, *args, **named_args, &hook)
+          orginal_method.bind(self).call(new_key, *new_args, **new_named_args, &block)
+        end
+      end
+    end
+
+    def before_key(target, &hook)
+      before_map target do |key = nil, *args, **named_args|
+        key = instance_exec(key, &hook)
+        [key, args, named_args]
+      end
+    end
+
+    def argument_names(**targets)
+      targets.each_pair do |target, names|
+        names = [names] unless names.is_a?(Array)
+        before_object(target) do |*args, **named_args|
+          new_args = []
+          args.each_with_index do |value, index|
+            name = names[index]
+            if name.nil?
+              new_args << value
+            elsif named_args[:name].nil?
+              named_args[name] = value
+            end
+          end
+          [new_args, named_args]
         end
       end
     end
