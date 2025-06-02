@@ -10,13 +10,18 @@ module OAS
   end
 
   class SchemaObject
-    fields :type?
+    fields :type?, :format?, minimum?: Integer, maximum: Integer, mim_items: Integer
     field :ref, required: false, property: :$ref
-    fields additional_properties: Boolean, required: [String]
+    fields required: [String], enum: []
+
+    field_or_object :additional_properties, Boolean, SchemaObject
+    field_or_object :items, Boolean, SchemaObject
+    field_or_object :unevaluated_items, Boolean, SchemaObject
 
     objects properties: { property: SchemaObject }, pattern_properties: { pattern_property: SchemaObject }
 
-    objects items: SchemaObject, prefix_items: [{ prefix_item: SchemaObject }]
+    objects prefix_items: [{ prefix_item: SchemaObject }]
+    objects contains: SchemaObject
 
     objects all_of: [{ all_of: SchemaObject }], any_of: [{ any_of: SchemaObject }]
     objects one_of: [{ one_of: SchemaObject }]
@@ -60,6 +65,13 @@ module OAS
       end
     end
 
-    argument_names items: :type
+    def refs(**named_args)
+      named_args.each_pair do |name, type|
+        property name, ref: type
+      end
+    end
+
+    alias p property
+    alias prop property
   end
 end

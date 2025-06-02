@@ -93,6 +93,9 @@ module OAS
     objects headers: { header: HeaderObject, header_ref: HeaderReferenceObject }
     objects content: { content: MediaTypeObject }
     objects links: { link: LinkObject, link_ref: LinkReferenceObject }
+
+    map_shortcuts content: { json: 'application/json', xml: 'text/xml', plain: 'text/plain' }
+    block_shortcuts json: { schema: :schema }
   end
 
   class OperationObject

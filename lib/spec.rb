@@ -40,6 +40,18 @@ module SpecRefinements
     def map? = @map
   end
 
+  class FieldOrObjectDesc
+    attr_reader :name, :field_type, :object_type, :required, :property
+
+    def initialize(name, field_type, object_type, required)
+      @name = name
+      @field_type = field_type
+      @object_type = object_type
+      @required = required
+      @property = name
+    end
+  end
+
   module BaseObject
     def initialize(**named_args, &block)
       named_args.entries.each do |property, value|
@@ -71,6 +83,16 @@ module SpecRefinements
                     v.to_spec
                   end
           spec[object.property] = value
+        end
+      end
+      if self.class.class_variable_defined? :@@field_or_objects
+        field_or_objects = self.class.class_variable_get :@@field_or_objects
+        field_or_objects.each do |field_or_object|
+          value = instance_variable_get iname(field_or_object.name)
+          next if value.nil?
+
+          value = value.to_spec if value.is_a? field_or_object.object_type
+          spec[field_or_object.property] = value
         end
       end
       spec
@@ -110,6 +132,7 @@ module SpecRefinements
           if args.empty?
             arr
           else
+            args.flatten!
             instance_variable_set iname(name), arr.nil? ? args : arr + args
           end
         end
@@ -207,6 +230,25 @@ module SpecRefinements
               instance_variable_set iname(name), value
             end
           end
+        end
+      end
+    end
+
+    def field_or_object(name, field_type, object_type, required: nil, property: nil)
+      field_or_objects = if class_variable_defined?(:@@field_or_objects)
+                           class_variable_get(:@@field_or_objects)
+                         else
+                           class_variable_set(:@@field_or_objects, [])
+                         end
+      field_or_objects << FieldOrObjectDesc.new(name, field_type, object_type, required)
+      define_method(name) do |*args, **named_args, &block|
+        if args.empty? && named_args.empty? && !block
+          instance_variable_get iname(name)
+        elsif !args.empty?
+          instance_variable_set iname(name), args.first
+        else
+          value = object_type.new(**named_args, &block)
+          instance_variable_set iname(name), value
         end
       end
     end
