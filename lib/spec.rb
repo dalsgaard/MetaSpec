@@ -48,7 +48,7 @@ module SpecRefinements
       @field_type = field_type
       @object_type = object_type
       @required = required
-      @property = name
+      @property = pname(name)
     end
   end
 
@@ -299,7 +299,7 @@ module SpecRefinements
       orginal_method = instance_method(target)
       define_method(target) do |value = nil|
         if value.nil?
-          orginal.bind(self).call
+          orginal_method.bind(self).call
         else
           new_value = instance_exec(value, &hook)
           orginal_method.bind(self).call new_value
@@ -311,10 +311,10 @@ module SpecRefinements
       orginal_method = instance_method(target)
       define_method(target) do |*args, **named_args, &block|
         if block.nil? && named_args.empty? && args.empty?
-          orginal.bind(self).call
+          orginal_method.bind(self).call
         else
-          new_args, new_named_args = instance_exec(*args, **named_args, &hook)
-          orginal_method.bind(self).call(*new_args, **new_named_args, &block)
+          new_args, new_named_args = instance_exec(args, named_args, block, &hook)
+          orginal_method.bind(self).call(*new_args, **new_named_args, &block) if new_args
         end
       end
     end
@@ -341,7 +341,7 @@ module SpecRefinements
     def argument_names(**targets)
       targets.each_pair do |target, names|
         names = [names] unless names.is_a?(Array)
-        before_object(target) do |*args, **named_args|
+        before_object(target) do |args, named_args|
           new_args = []
           args.each_with_index do |value, index|
             name = names[index]

@@ -13,7 +13,7 @@ end
 
 path '/pets/{id}', description: 'A given pet' do
   get operation_id: :read_pet do
-    parameter :id, in: :path
+    parameter :id, in: :path, example: 2
     response OK, description: 'Read a given pet', schema: :Pet
   end
 end
@@ -33,5 +33,9 @@ components do
   schema :Foo, type: Object do
     p :foo, enum: [1, 2, 3, 4]
     prop :bar, ref: :Bar
+    examples [
+      { foo: 2 },
+      { foo: 4 }
+    ]
   end
 end

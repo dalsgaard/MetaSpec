@@ -9,10 +9,14 @@ module OAS
   class Number
   end
 
+  class Any
+  end
+
   class SchemaObject
     fields :type?, :format?, minimum?: Integer, maximum: Integer, mim_items: Integer
     field :ref, required: false, property: :$ref
     fields required: [String], enum: []
+    field :examples, nil, required: false, array: true
 
     field_or_object :additional_properties, Boolean, SchemaObject
     field_or_object :items, Boolean, SchemaObject
@@ -62,6 +66,26 @@ module OAS
         end
       else
         type
+      end
+    end
+
+    before_object :items do |args, named_args, _block|
+      case args.first
+      when Array
+        type = args.shift.first
+        args.unshift type
+        schema type: Array do
+          items(*args, **named_args, &block)
+        end
+        nil
+      when Class
+        named_args[:type] = args.shift
+        [args, named_args]
+      when Symbol
+        named_args[:ref] = args.shift
+        [args, named_args]
+      else
+        [args, named_args]
       end
     end
 

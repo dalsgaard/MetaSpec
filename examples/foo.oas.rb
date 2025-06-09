@@ -19,7 +19,7 @@ components do
     string :name
     integer :age?
     array :arr? do
-      items Number
+      items type: Number
     end
     array :status do
       prefix_item type: Number
