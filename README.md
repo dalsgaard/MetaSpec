@@ -1,0 +1,3 @@
+```
+$ ./oas examples/*.oas.rb
+```
