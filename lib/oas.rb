@@ -110,6 +110,8 @@ module OAS
       if value.to_s == 'path'
         required true
         schema(type: String) if schema.nil?
+      elsif value.to_s == 'query'
+        schema(type: String) if schema.nil?
       end
       value
     end
