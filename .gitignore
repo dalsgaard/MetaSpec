@@ -1,2 +1,4 @@
 *.oas.json
 foo.rb
+
+*.ts
